@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Porra Cuadrangulares 2026-II</title>
+  <meta name="description" content="Pronostica los marcadores de los cuadrangulares y sigue la tabla de posiciones.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-in">
+      <div class="brand">
+        <span class="ball" aria-hidden="true">⚽</span>
+        <div>
+          <h1 id="titulo">Porra de Cuadrangulares</h1>
+          <p id="subtitulo">Liga BetPlay · 2026-II</p>
+        </div>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab" data-tab="partidos" aria-selected="true">Partidos</button>
+        <button class="tab" data-tab="tabla">Posiciones</button>
+        <button class="tab" data-tab="reglas">Reglas</button>
+        <button class="tab" data-tab="admin" hidden>Admin</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="v-partidos" class="vista">
+      <div id="cuenta"></div>
+      <div class="filtros" role="group" aria-label="Filtrar partidos">
+        <button class="chip" data-filtro="todos" aria-pressed="true">Todos</button>
+        <button class="chip" data-filtro="abiertos" aria-pressed="false">Por pronosticar</button>
+        <button class="chip" data-filtro="jugados" aria-pressed="false">Cerrados</button>
+      </div>
+      <div id="lista"><div class="card cargando">Cargando partidos…</div></div>
+    </section>
+
+    <section id="v-tabla" class="vista" hidden>
+      <div id="tabla"></div>
+    </section>
+
+    <section id="v-reglas" class="vista" hidden>
+      <div class="card reglas">
+        <h2>Reglas de la porra</h2>
+        <ol>
+          <li><strong>Inscripción:</strong> con tu cédula, nombre completo y teléfono. Eliges un PIN de 4 a 6 números para que nadie más pueda cambiar tus marcadores.</li>
+          <li><strong>Pronósticos:</strong> puedes ingresar y cambiar tu marcador hasta <strong>5 minutos antes</strong> del inicio de cada partido. Después de eso queda bloqueado.</li>
+          <li><strong>Puntos por partido:</strong>
+            <ul>
+              <li><span class="pts p3">3</span> si aciertas el marcador exacto.</li>
+              <li><span class="pts p1">1</span> si aciertas el ganador o el empate, sin el marcador exacto.</li>
+              <li><span class="pts p0">0</span> si no aciertas.</li>
+            </ul>
+          </li>
+          <li><strong>Marcador válido:</strong> solo el de los 90 minutos reglamentarios. Los goles del tiempo de reposición, la prórroga y los penales no cuentan.</li>
+          <li><strong>Desempate en la tabla:</strong> gana quien tenga más marcadores exactos.</li>
+          <li><strong>Transparencia:</strong> cuando un partido cierra (5 minutos antes del inicio), todos pueden ver los pronósticos de los demás para ese partido. Mientras se juega, aparecen en la tabla de posiciones junto a los puntos de cada participante.</li>
+          <li>Todas las horas están en <strong>hora de Colombia</strong>.</li>
+        </ol>
+        <p class="muted">¿Olvidaste tu PIN? Pídele al organizador que lo restablezca.</p>
+      </div>
+    </section>
+
+    <section id="v-admin" class="vista" hidden>
+      <div id="admin-box"></div>
+    </section>
+  </main>
+
+  <div id="savebar" hidden>
+    <div class="wrap savebar-in">
+      <span id="savebar-txt"></span>
+      <button class="btn" id="btn-guardar">Guardar pronósticos</button>
+    </div>
+  </div>
+  <div id="toasts" aria-live="polite"></div>
+</body>
+</html>
