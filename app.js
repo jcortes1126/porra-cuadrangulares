@@ -336,9 +336,14 @@
     if (!silencioso) box.innerHTML = '<div class="card cargando">Cargando posiciones…</div>';
     try {
       const enJuego = partidosEnJuego();
+      // Si la base de datos aún no tiene pronosticos_en_juego, se usa pronosticos_cerrados
+      // (sin cedula_corta: se cruza solo por nombre). Así la tabla nunca deja de cargar.
+      const cargarPicks = () => rpc('pronosticos_en_juego')
+        .catch(() => rpc('pronosticos_cerrados'))
+        .catch(() => []);
       const [filasR, picksR] = await Promise.all([
         rpc('ranking'),
-        enJuego.length ? rpc('pronosticos_en_juego') : Promise.resolve([]),
+        enJuego.length ? cargarPicks() : Promise.resolve([]),
       ]);
       const filas = filasR || [];
       tablaFirma = firmaEnJuego();
@@ -348,7 +353,8 @@
       // partido_id -> (nombre|cedula_corta -> "2–1")
       const picks = new Map(enJuego.map((p) => [Number(p.id), new Map()]));
       for (const x of picksR || []) {
-        picks.get(Number(x.partido_id))?.set(`${x.nombre}|${x.cedula_corta}`, `${x.goles_local}–${x.goles_visitante}`);
+        const k = x.cedula_corta ? `${x.nombre}|${x.cedula_corta}` : x.nombre;
+        picks.get(Number(x.partido_id))?.set(k, `${x.goles_local}–${x.goles_visitante}`);
       }
       const varios = enJuego.length > 1;
       const etiqueta = (i) => (varios ? `P${i + 1}` : 'Pronóst.');
@@ -380,7 +386,8 @@
             return `<tr class="${yo ? 'yo' : ''}"><td class="n">${medalla(Number(f.posicion), Number(f.puntos))}</td>
               <td>${esc(f.nombre)}<span class="ced">${esc(f.cedula_corta)}</span></td>
               ${enJuego.map((p) => {
-                const v = picks.get(Number(p.id))?.get(k);
+                const m = picks.get(Number(p.id));
+                const v = m?.get(k) ?? m?.get(f.nombre);
                 return v ? `<td class="n pick-col"><span class="pick">${v}</span></td>` : '<td class="n pick-col muted">—</td>';
               }).join('')}
               <td class="n">${f.exactos}</td><td class="n">${f.aciertos}</td><td class="n pts-col">${f.puntos}</td></tr>`;
