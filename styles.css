@@ -57,8 +57,9 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 /* Encabezado */
 .top { background: var(--top); color: var(--top-ink); position: sticky; top: 0; z-index: 10; }
 .top-in { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; }
-.brand { display: flex; align-items: center; gap: 10px; }
-.ball { font-size: 28px; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.logo { width: 52px; height: 52px; flex: none; display: block; }
+@media (min-width: 560px) { .logo { width: 60px; height: 60px; } }
 .brand h1 { font-size: 1.15rem; }
 .brand p { margin: 0; font-size: .82rem; opacity: .75; }
 .tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
@@ -92,6 +93,7 @@ textarea { min-height: 120px; font-family: ui-monospace, Consolas, monospace; fo
   background: var(--brand); color: var(--brand-ink);
 }
 .btn:disabled { opacity: .55; cursor: wait; }
+a.btn { display: inline-block; text-decoration: none; }
 .btn.ghost { background: var(--surface-2); color: var(--text); }
 .btn.danger { background: var(--danger-soft); color: var(--danger); }
 .btn.sm { padding: 6px 10px; font-size: .82rem; }

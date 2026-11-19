@@ -418,6 +418,10 @@
       return;
     }
     box.innerHTML = `
+      <div class="card"><h3>Faltan por pronosticar</h3>
+        <p class="muted">Participantes que todavía no han guardado su marcador para el partido elegido.</p>
+        <select id="pend-partido" aria-label="Partido"></select>
+        <div id="adm-pend" style="margin-top:12px"></div></div>
       <div class="card">
         <h2 id="fp-tit">Nuevo partido</h2>
         <form id="f-partido">
@@ -515,6 +519,7 @@
       const r = await rpc('admin_participantes', { p_clave: st.admin });
       st.adminPart = r.participantes || [];
       renderAdminParticipantes();
+      renderAdminPendientes();
       const s = await rpc('admin_socios', { p_clave: st.admin });
       st.adminSocios = s.socios || [];
       renderAdminSocios();
@@ -589,6 +594,44 @@
   }
 
   const invitadoTxt = (x) => (x.tipo === 'socio' ? 'Socio(a)' : x.invitado_por || '—');
+  const waNum = (tel) => (tel.length === 10 ? '57' : '') + tel;
+
+  // Quién falta por pronosticar: por defecto, el próximo partido en cerrar.
+  function renderAdminPendientes() {
+    const sel = $('#pend-partido'), box = $('#adm-pend');
+    if (!sel || !box) return;
+    const abiertos = st.partidos.filter((p) => estado(p) === 'abierto').sort((a, b) => cierreDe(a) - cierreDe(b));
+    if (!abiertos.length) { sel.hidden = true; box.innerHTML = '<p class="muted">No hay partidos abiertos.</p>'; return; }
+    sel.hidden = false;
+    const previo = sel.value;
+    sel.innerHTML = abiertos.map((p) => `<option value="${p.id}">${esc(p.local)} vs ${esc(p.visitante)} · ${fechaTxt(p.inicio)}</option>`).join('');
+    if (abiertos.some((p) => String(p.id) === previo)) sel.value = previo;
+    sel.onchange = pintar;
+    pintar();
+
+    function pintar() {
+      const p = abiertos.find((x) => String(x.id) === sel.value);
+      if (!p) return;
+      const faltanP = st.adminPart.filter((x) => !(x.partidos_pron || []).map(Number).includes(Number(p.id)));
+      const cierre = cierreDe(p);
+      const horaCierre = fmtHora.format(new Date(cierre));
+      const msg = (nom) => `Hola ${nom.split(' ')[0]}, te recordamos que aún no has puesto tu marcador para ${p.local} vs ${p.visitante}. `
+        + `Se cierra a las ${horaCierre} (${fmtFecha.format(new Date(cierre))}). ¡No te quedes por fuera!`;
+      const cab = `<p><b>${faltanP.length}</b> de ${st.adminPart.length} sin marcador · cierra en <b>${faltan(cierre - Date.now())}</b> (${horaCierre})</p>`;
+      if (!faltanP.length) { box.innerHTML = cab + '<p class="muted">¡Todos ya pronosticaron este partido!</p>'; return; }
+      box.innerHTML = cab + `<div class="acciones" style="margin:0 0 8px"><button class="btn ghost sm" id="btn-pend-copiar">Copiar lista</button></div>
+        <div class="scroll-x"><table class="tbl-mini"><thead><tr><th>Nombre</th><th>Teléfono</th><th>Invitado por</th><th></th></tr></thead>
+        <tbody>${faltanP.map((x) => `<tr><td>${esc(x.nombre)}</td><td>${esc(x.telefono)}</td><td>${esc(invitadoTxt(x))}</td>
+          <td class="acc"><a class="btn sm" target="_blank" rel="noopener"
+            href="https://wa.me/${esc(waNum(x.telefono))}?text=${encodeURIComponent(msg(x.nombre))}">Avisar</a></td></tr>`).join('')}</tbody></table></div>`;
+      $('#btn-pend-copiar').onclick = async () => {
+        const txt = `Faltan por poner marcador en ${p.local} vs ${p.visitante} (cierra ${horaCierre}):\n`
+          + faltanP.map((x) => `- ${x.nombre} · ${x.telefono}`).join('\n');
+        try { await navigator.clipboard.writeText(txt); toast('Lista copiada'); }
+        catch { prompt('Copia la lista:', txt); }
+      };
+    }
+  }
 
   function renderAdminParticipantes() {
     const box = $('#adm-part');
@@ -598,7 +641,7 @@
     box.innerHTML = `<table class="tbl-mini"><thead><tr><th>Nombre</th><th>Cédula</th><th>Teléfono</th><th>Invitado por</th><th>Pron.</th><th>Pts</th><th></th></tr></thead>
       <tbody>${st.adminPart.map((x) => `<tr data-ced="${esc(x.cedula)}">
         <td>${esc(x.nombre)}</td><td>${esc(x.cedula)}</td>
-        <td><a href="https://wa.me/${x.telefono.length === 10 ? '57' : ''}${esc(x.telefono)}" target="_blank" rel="noopener">${esc(x.telefono)}</a></td>
+        <td><a href="https://wa.me/${esc(waNum(x.telefono))}" target="_blank" rel="noopener">${esc(x.telefono)}</a></td>
         <td>${esc(invitadoTxt(x))}</td>
         <td>${x.pronosticos}</td><td><b>${x.puntos}</b></td>
         <td class="acc"><button class="btn ghost sm" data-acc="pin">PIN</button> <button class="btn danger sm" data-acc="del">✕</button></td></tr>`).join('')}</tbody></table>`;
