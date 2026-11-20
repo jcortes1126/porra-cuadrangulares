@@ -457,7 +457,11 @@
       <div class="card"><h3 id="adm-part-tit">Participantes</h3>
         <div class="acciones" style="margin:0 0 8px"><button class="btn ghost sm" id="btn-csv">Descargar CSV</button>
           <button class="btn ghost sm" id="btn-salir-adm">Cerrar sesión admin</button></div>
-        <div id="adm-part" class="scroll-x"></div></div>`;
+        <div id="adm-part" class="scroll-x"></div></div>
+      <div class="card"><h3>Respaldo y Excel</h3>
+        <p class="muted">Descarga todos los pronósticos en Excel, o un respaldo completo de la base de datos (archivo .json) para guardarlo en tu computador.</p>
+        <div class="acciones" style="margin:0"><button class="btn sm" id="btn-xlsx">Descargar pronósticos (Excel)</button>
+          <button class="btn ghost sm" id="btn-respaldo">Descargar respaldo (.json)</button></div></div>`;
 
     const f = $('#f-partido');
     const limpiar = () => { f.reset(); f.id.value = ''; $('#fp-tit').textContent = 'Nuevo partido'; };
@@ -508,6 +512,8 @@
     });
 
     $('#btn-csv').onclick = descargarCSV;
+    $('#btn-xlsx').onclick = (ev) => conBoton(ev.target, descargarExcel);
+    $('#btn-respaldo').onclick = (ev) => conBoton(ev.target, descargarRespaldo);
     $('#btn-salir-adm').onclick = () => { st.admin = null; store.sset('porra_admin', null); renderAdmin(); };
     refrescarAdmin();
   }
@@ -665,6 +671,114 @@
         });
       };
     });
+  }
+
+  // ------------------------------------------------------------------ respaldo / excel
+  const sello = () => new Intl.DateTimeFormat('sv-SE', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    .format(new Date()).replace(' ', '_').replace(':', 'h');
+  const fechaLocal = (iso) => (iso ? new Date(iso).toLocaleString('es-CO', { timeZone: TZ }) : '');
+
+  function bajar(blob, nombre) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nombre;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function descargarRespaldo() {
+    const d = await rpc('admin_exportar', { p_clave: st.admin });
+    delete d.ok;
+    bajar(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }), `respaldo-porra-${sello()}.json`);
+    toast(`Respaldo descargado: ${d.participantes.length} participantes, ${d.pronosticos.length} pronósticos`);
+  }
+
+  let xlsxCarga = null;
+  function cargarXLSX() {
+    if (window.XLSX) return Promise.resolve();
+    xlsxCarga = xlsxCarga || new Promise((ok, mal) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      sc.onload = ok;
+      sc.onerror = () => { xlsxCarga = null; mal(new Error('No se pudo cargar el generador de Excel. Revisa tu conexión.')); };
+      document.head.appendChild(sc);
+    });
+    return xlsxCarga;
+  }
+
+  const ptsDe = (pl, pv, rl, rv) => {
+    if (rl == null || rv == null) return '';
+    if (pl === rl && pv === rv) return 3;
+    return Math.sign(pl - pv) === Math.sign(rl - rv) ? 1 : 0;
+  };
+
+  async function descargarExcel() {
+    const [d] = await Promise.all([rpc('admin_exportar', { p_clave: st.admin }), cargarXLSX()]);
+    const X = window.XLSX;
+    const socios = Object.fromEntries(d.socios.map((s) => [s.id, s.nombre]));
+    const pers = Object.fromEntries(d.participantes.map((x) => [x.cedula, x]));
+    const parts = Object.fromEntries(d.partidos.map((m) => [m.id, m]));
+    const nomPartido = (m) => `${m.local} vs ${m.visitante}`;
+    const resTxt = (m) => (m.goles_local == null ? '' : `${m.goles_local}-${m.goles_visitante}`);
+
+    // 1) Pronósticos: una fila por participante y partido
+    const filas = d.pronosticos.map((pr) => {
+      const m = parts[pr.partido_id] || {}, pa = pers[pr.cedula] || {};
+      return {
+        Participante: pa.nombre, 'Cédula': pr.cedula, Fase: m.fase, Fecha: m.jornada ?? '',
+        Partido: nomPartido(m), Inicio: fechaLocal(m.inicio),
+        'Pron. local': pr.goles_local, 'Pron. visitante': pr.goles_visitante,
+        Resultado: resTxt(m), Puntos: ptsDe(pr.goles_local, pr.goles_visitante, m.goles_local, m.goles_visitante),
+        'Guardado': fechaLocal(pr.actualizado),
+      };
+    }).sort((a, b) => String(a.Participante).localeCompare(String(b.Participante), 'es') || 0);
+
+    // 2) Matriz: participantes x partidos
+    const cols = d.partidos.map((m) => ({ m, k: `${nomPartido(m)} (${fmtFecha.format(new Date(m.inicio))})` }));
+    const idx = {};
+    d.pronosticos.forEach((pr) => { idx[pr.cedula + '|' + pr.partido_id] = pr; });
+    const matriz = d.participantes.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map((pa) => {
+      const r = { Participante: pa.nombre, 'Cédula': pa.cedula };
+      let tot = 0;
+      cols.forEach(({ m, k }) => {
+        const pr = idx[pa.cedula + '|' + m.id];
+        r[k] = pr ? `${pr.goles_local}-${pr.goles_visitante}` : '';
+        if (pr) tot += Number(ptsDe(pr.goles_local, pr.goles_visitante, m.goles_local, m.goles_visitante)) || 0;
+      });
+      r.Puntos = tot;
+      return r;
+    });
+    if (matriz.length) {
+      const fr = { Participante: 'RESULTADO', 'Cédula': '' };
+      cols.forEach(({ m, k }) => { fr[k] = resTxt(m); });
+      fr.Puntos = '';
+      matriz.unshift(fr);
+    }
+
+    // 3) Partidos y 4) Participantes
+    const partidos = d.partidos.map((m) => ({
+      ID: m.id, Fase: m.fase, Fecha: m.jornada ?? '', Local: m.local, Visitante: m.visitante,
+      Inicio: fechaLocal(m.inicio), 'Goles local': m.goles_local ?? '', 'Goles visitante': m.goles_visitante ?? '',
+      Pronósticos: d.pronosticos.filter((pr) => pr.partido_id === m.id).length,
+    }));
+    const participantes = d.participantes.map((x) => ({
+      Nombre: x.nombre, 'Cédula': x.cedula, 'Teléfono': x.telefono,
+      Tipo: x.tipo || '', 'Invitado por': x.tipo === 'socio' ? 'Socio(a)' : (socios[x.invitado_por] || ''),
+      Inscrito: fechaLocal(x.creado),
+    }));
+
+    const wb = X.utils.book_new();
+    const hoja = (datos, nombre, anchos) => {
+      const ws = X.utils.json_to_sheet(datos.length ? datos : [{ '(sin datos)': '' }]);
+      if (anchos) ws['!cols'] = anchos.map((w) => ({ wch: w }));
+      X.utils.book_append_sheet(wb, ws, nombre);
+    };
+    hoja(filas, 'Pronósticos', [28, 12, 12, 7, 34, 20, 11, 14, 10, 7, 20]);
+    hoja(matriz, 'Matriz', [28, 12, ...cols.map(() => 18), 8]);
+    hoja(partidos, 'Partidos', [6, 12, 7, 18, 18, 20, 11, 14, 12]);
+    hoja(participantes, 'Participantes', [28, 12, 12, 9, 26, 20]);
+    X.writeFile(wb, `pronosticos-porra-${sello()}.xlsx`);
+    toast(`Excel descargado: ${d.pronosticos.length} pronósticos`);
   }
 
   function descargarCSV() {
