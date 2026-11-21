@@ -6,4 +6,6 @@ window.PORRA_CONFIG = {
   SUPABASE_KEY: 'sb_publishable_NxPHelDUl4t8db_QPimt5A_VKNMvTUZ',
   TITULO: 'Porra de Cuadrangulares',
   SUBTITULO: 'Liga BetPlay · 2026-II',
+  // true = se ve la opción "Inscribirme"; false = solo pueden ingresar los ya inscritos.
+  INSCRIPCIONES_ABIERTAS: false,
 };

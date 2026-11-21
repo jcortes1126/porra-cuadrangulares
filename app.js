@@ -141,12 +141,13 @@
       };
       return;
     }
-    const reg = st.modoCuenta === 'registro';
+    const abiertas = CFG.INSCRIPCIONES_ABIERTAS !== false;
+    const reg = abiertas && st.modoCuenta === 'registro';
     box.innerHTML = `<div class="card">
-      <div class="seg">
+      ${abiertas ? `<div class="seg">
         <button data-modo="ingresar" aria-pressed="${!reg}">Ingresar</button>
         <button data-modo="registro" aria-pressed="${reg}">Inscribirme</button>
-      </div>
+      </div>` : '<h2>Ingresar</h2>'}
       <form id="f-cuenta" autocomplete="on" novalidate>
         <div class="grid c2">
           <div><label for="c-ced">Cédula</label><input id="c-ced" name="cedula" inputmode="numeric" autocomplete="username" required></div>
@@ -159,7 +160,7 @@
         </div>
         <div class="acciones">
           <button class="btn" type="submit">${reg ? 'Inscribirme' : 'Ingresar'}</button>
-          <span class="muted">${reg ? 'El PIN protege tus marcadores. No lo compartas.' : '¿Primera vez? Toca “Inscribirme”.'}</span>
+          <span class="muted">${reg ? 'El PIN protege tus marcadores. No lo compartas.' : (abiertas ? '¿Primera vez? Toca “Inscribirme”.' : 'Las inscripciones están cerradas.')}</span>
         </div>
       </form></div>`;
     $$('[data-modo]', box).forEach((b) => (b.onclick = () => { st.modoCuenta = b.dataset.modo; renderCuenta(); }));
