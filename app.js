@@ -351,6 +351,89 @@
   const partidosEnJuego = () => st.partidos.filter((p) => estado(p) === 'cerrado');
   const firmaEnJuego = () => partidosEnJuego().map((p) => p.id).join(',');
   let tablaFirma = '';
+  let ultimaTabla = [];
+
+  // Dibuja la tabla de posiciones en un PNG (canvas, sin librerías) para compartir por WhatsApp.
+  async function compartirTablaImagen() {
+    const filas = ultimaTabla;
+    if (!filas.length) throw new Error('La tabla está vacía.');
+    const W = 1080, PAD = 48, CAB = 230, FILA = 64, TH = 56, PIE = 90;
+    const H = CAB + 70 + TH + filas.length * FILA + PIE;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    const F = (peso, px) => `${peso} ${px}px system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif`;
+    const C = { bg: '#f3f5f2', top: '#0b3d22', topInk: '#f2f7f3', brand: '#0f7a3d', soft: '#dcefe2', text: '#15201a', muted: '#5d6b62', line: '#dbe2d9', alt: '#f7f9f6', gold: '#c99a06' };
+    const recorta = (txt, max) => {
+      if (g.measureText(txt).width <= max) return txt;
+      while (txt.length > 1 && g.measureText(txt + '…').width > max) txt = txt.slice(0, -1);
+      return txt + '…';
+    };
+
+    g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+    // Encabezado
+    g.fillStyle = C.top; g.fillRect(0, 0, W, CAB);
+    let xTit = PAD;
+    try {
+      const logo = await new Promise((ok, mal) => { const im = new Image(); im.onload = () => ok(im); im.onerror = mal; im.src = 'logo-fondo.png'; });
+      g.save(); g.beginPath(); g.arc(PAD + 60, 100, 60, 0, Math.PI * 2); g.clip();
+      g.drawImage(logo, PAD, 40, 120, 120); g.restore();
+      xTit = PAD + 150;
+    } catch { /* sin logo */ }
+    g.fillStyle = C.topInk; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+    g.font = F(800, 50); g.fillText(recorta(CFG.TITULO || 'Porra', W - xTit - PAD), xTit, 92);
+    g.globalAlpha = 0.85; g.font = F(500, 30); g.fillText(CFG.SUBTITULO || '', xTit, 136);
+    g.globalAlpha = 1; g.font = F(700, 34); g.fillText('Tabla de posiciones', xTit, 188);
+
+    const jugados = st.partidos.filter(tieneRes).length;
+    g.fillStyle = C.muted; g.font = F(500, 26);
+    g.fillText(`${jugados} de ${st.partidos.length} partidos con resultado · ${filas.length} participantes`, PAD, CAB + 44);
+
+    // Columnas: # | Participante | Exactos | Aciertos | Pts
+    const x0 = PAD, x1 = W - PAD;
+    const cols = { n: x0 + 40, nom: x0 + 100, ex: x1 - 330, ac: x1 - 190, pts: x1 - 50 };
+    let y = CAB + 70;
+    g.fillStyle = C.top; g.fillRect(x0, y, x1 - x0, TH);
+    g.fillStyle = C.topInk; g.font = F(700, 24); g.textBaseline = 'middle';
+    const cy = y + TH / 2;
+    g.textAlign = 'center'; g.fillText('#', cols.n, cy);
+    g.textAlign = 'left'; g.fillText('PARTICIPANTE', cols.nom, cy);
+    g.textAlign = 'center'; g.fillText('EXACTOS', cols.ex, cy); g.fillText('ACIERTOS', cols.ac, cy); g.fillText('PTS', cols.pts, cy);
+    y += TH;
+
+    filas.forEach((f, i) => {
+      const pos = Number(f.posicion), pts = Number(f.puntos);
+      g.fillStyle = pos <= 3 && pts > 0 ? C.soft : i % 2 ? C.alt : '#ffffff';
+      g.fillRect(x0, y, x1 - x0, FILA);
+      g.fillStyle = C.line; g.fillRect(x0, y + FILA - 1, x1 - x0, 1);
+      const m = y + FILA / 2;
+      g.textAlign = 'center';
+      if (pos <= 3 && pts > 0) { g.font = F(400, 34); g.fillText(['🥇', '🥈', '🥉'][pos - 1], cols.n, m + 2); }
+      else { g.fillStyle = C.muted; g.font = F(700, 28); g.fillText(String(pos), cols.n, m); }
+      g.textAlign = 'left'; g.fillStyle = C.text; g.font = F(600, 30);
+      g.fillText(recorta(f.nombre, cols.ex - cols.nom - 90), cols.nom, m);
+      g.textAlign = 'center'; g.fillStyle = C.muted; g.font = F(500, 28);
+      g.fillText(String(f.exactos), cols.ex, m); g.fillText(String(f.aciertos), cols.ac, m);
+      g.fillStyle = C.brand; g.font = F(800, 32); g.fillText(String(pts), cols.pts, m);
+      y += FILA;
+    });
+
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = C.muted; g.font = F(500, 24);
+    const hoy = new Date().toLocaleString('es-CO', { timeZone: TZ, day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' });
+    g.fillText(`Actualizada: ${hoy}  ·  Exacto = 3 pts · Ganador o empate = 1 pt`, W / 2, y + PIE / 2);
+
+    const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
+    const nombre = `tabla-posiciones-${new Date().toISOString().slice(0, 10)}.png`;
+    const file = new File([blob], nombre, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Tabla de posiciones' }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = nombre; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('Imagen descargada');
+  }
 
   async function renderTabla(silencioso = false) {
     const box = $('#tabla');
@@ -367,6 +450,7 @@
         enJuego.length ? cargarPicks() : Promise.resolve([]),
       ]);
       const filas = filasR || [];
+      ultimaTabla = filas;
       tablaFirma = firmaEnJuego();
       const jugados = st.partidos.filter(tieneRes).length;
       if (!filas.length) { box.innerHTML = '<div class="card vacio">Aún no hay participantes inscritos.</div>'; return; }
@@ -393,7 +477,8 @@
       const yoCorta = st.sesion ? '•••' + st.sesion.cedula.slice(-3) : null;
       const medalla = (n, pts) => (pts > 0 && n <= 3 ? `<span class="medalla">${['🥇', '🥈', '🥉'][n - 1]}</span>` : n);
       box.innerHTML = `<div class="card">
-        <h2>Tabla de posiciones</h2>
+        <div class="tabla-cab"><h2>Tabla de posiciones</h2>
+          <button class="btn ghost sm" id="btn-img-tabla">📷 Compartir imagen</button></div>
         <p class="muted">${jugados} de ${st.partidos.length} partidos con resultado · ${filas.length} participantes</p>
         ${enJuegoHTML}
         <div class="scroll-x"><table class="tabla">
@@ -414,6 +499,7 @@
               <td class="n">${f.exactos}</td><td class="n">${f.aciertos}</td><td class="n pts-col">${f.puntos}</td></tr>`;
           }).join('')}</tbody>
         </table></div></div>`;
+      $('#btn-img-tabla').onclick = (ev) => conBoton(ev.currentTarget, compartirTablaImagen);
     } catch (e) {
       if (!silencioso) box.innerHTML = `<div class="card vacio">No se pudo cargar la tabla: ${esc(e.message)}</div>`;
     }

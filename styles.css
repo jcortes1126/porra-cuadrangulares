@@ -217,3 +217,6 @@ details.grupo[open] > summary.grupo-tit::before { transform: rotate(90deg); }
 #toasts { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 420px); }
 .toast { background: var(--top); color: var(--top-ink); padding: 10px 14px; border-radius: 10px; font-size: .9rem; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
 .toast.error { background: var(--danger); color: #fff; }
+
+.tabla-cab { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: .5rem; }
+.tabla-cab h2 { margin: 0; }
