@@ -28,6 +28,7 @@
     publicos: null,    // pronósticos de todos (partidos cerrados)
     publicosAt: 0,
     verOtros: new Set(),
+    gruposAbiertos: null, // {"Fecha 1": true/false} lo que el usuario abrió/cerró a mano
     filtro: 'todos',
     tab: 'partidos',
     modoCuenta: 'ingresar',
@@ -273,9 +274,28 @@
       if (!grupos.has(k)) grupos.set(k, []);
       grupos.get(k).push(p);
     }
+    // Por defecto se abren las fechas con partidos sin terminar; las ya jugadas quedan contraídas.
+    if (!st.gruposAbiertos) st.gruposAbiertos = store.get('porra_grupos') || {};
+    const claves = [...grupos.keys()];
+    const pendiente = (ps) => ps.some((p) => estado(p) !== 'final');
+    const hayPendiente = claves.some((k) => pendiente(grupos.get(k)));
     let html = '';
-    for (const [k, ps] of grupos) html += `<h3 class="grupo-tit">${esc(k)}</h3>${ps.map(cardPartido).join('')}`;
+    for (const [k, ps] of grupos) {
+      const porDefecto = hayPendiente ? pendiente(ps) : k === claves[claves.length - 1];
+      const abierto = st.gruposAbiertos[k] ?? porDefecto;
+      const nAb = ps.filter((p) => estado(p) === 'abierto').length;
+      const nJu = ps.filter((p) => estado(p) === 'cerrado').length;
+      const info = nAb ? `${nAb} por pronosticar` : nJu ? 'En juego' : ps.every((p) => estado(p) === 'final') ? 'Terminada' : '';
+      html += `<details class="grupo" data-grupo="${esc(k)}"${abierto ? ' open' : ''}>
+        <summary class="grupo-tit"><span>${esc(k)}</span><span class="grupo-info">${ps.length} partido${ps.length > 1 ? 's' : ''}${info ? ' · ' + info : ''}</span></summary>
+        ${ps.map(cardPartido).join('')}</details>`;
+    }
     cont.innerHTML = html;
+    $$('details.grupo > summary', cont).forEach((sm) => sm.addEventListener('click', () => {
+      const d = sm.parentElement; // el clic ocurre antes de que cambie "open"
+      st.gruposAbiertos[d.dataset.grupo] = !d.open;
+      store.set('porra_grupos', st.gruposAbiertos);
+    }));
     actualizarSavebar();
   }
 
