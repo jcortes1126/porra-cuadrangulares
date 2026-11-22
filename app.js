@@ -352,13 +352,31 @@
   const firmaEnJuego = () => partidosEnJuego().map((p) => p.id).join(',');
   let tablaFirma = '';
   let ultimaTabla = [];
+  let ultimoJuego = { partidos: [], picks: new Map() }; // partidos en juego y sus pronósticos
+
+  // Pronósticos que van en la imagen: los del partido en juego o, si no hay, los del último terminado.
+  async function pronosticosImagen() {
+    if (ultimoJuego.partidos.length) {
+      return { partidos: ultimoJuego.partidos, picks: ultimoJuego.picks, txt: (p) => 'en juego' };
+    }
+    const ult = st.partidos.filter(tieneRes).sort((a, b) => new Date(b.inicio) - new Date(a.inicio))[0];
+    if (!ult) return { partidos: [], picks: new Map(), txt: () => '' };
+    const filas = (await rpc('pronosticos_cerrados')) || [];
+    const m = new Map();
+    filas.filter((x) => Number(x.partido_id) === Number(ult.id))
+      .forEach((x) => m.set(x.nombre, `${x.goles_local}–${x.goles_visitante}`));
+    return { partidos: [ult], picks: new Map([[Number(ult.id), m]]), txt: (p) => `resultado ${p.goles_local}–${p.goles_visitante}` };
+  }
 
   // Dibuja la tabla de posiciones en un PNG (canvas, sin librerías) para compartir por WhatsApp.
   async function compartirTablaImagen() {
     const filas = ultimaTabla;
     if (!filas.length) throw new Error('La tabla está vacía.');
+    const pron = await pronosticosImagen();
+    const nP = pron.partidos.length, varios = nP > 1;
     const W = 1080, PAD = 48, CAB = 230, FILA = 64, TH = 56, PIE = 90;
-    const H = CAB + 70 + TH + filas.length * FILA + PIE;
+    const INFO = 44 + nP * 38 + 26; // resumen + una línea por partido
+    const H = CAB + INFO + TH + filas.length * FILA + PIE;
     const cv = document.createElement('canvas');
     cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
@@ -389,31 +407,53 @@
     g.fillStyle = C.muted; g.font = F(500, 26);
     g.fillText(`${jugados} de ${st.partidos.length} partidos con resultado · ${filas.length} participantes`, PAD, CAB + 44);
 
-    // Columnas: # | Participante | Exactos | Aciertos | Pts
-    const x0 = PAD, x1 = W - PAD;
-    const cols = { n: x0 + 40, nom: x0 + 100, ex: x1 - 330, ac: x1 - 190, pts: x1 - 50 };
-    let y = CAB + 70;
+    // Partido(s) a los que corresponde la columna de pronóstico
+    pron.partidos.forEach((p, i) => {
+      const y0 = CAB + 44 + (i + 1) * 38;
+      g.textAlign = 'left'; g.fillStyle = C.text; g.font = F(700, 26);
+      const et = varios ? `P${i + 1}: ` : 'Pronóstico: ';
+      g.fillText(et, PAD, y0);
+      const w = g.measureText(et).width;
+      g.font = F(500, 26);
+      g.fillText(recorta(`${p.local} vs ${p.visitante} (${pron.txt(p)})`, W - 2 * PAD - w), PAD + w, y0);
+    });
+
+    // Columnas: # | Participante | Pronóstico(s) | Pts
+    const x0 = PAD, x1 = W - PAD, ANCHO_P = 150;
+    const cols = { n: x0 + 40, nom: x0 + 100, pts: x1 - 60 };
+    const xPick = (i) => cols.pts - 130 - (nP - 1 - i) * ANCHO_P;
+    const finNombre = nP ? xPick(0) - ANCHO_P / 2 - 10 : cols.pts - 70;
+    let y = CAB + INFO;
     g.fillStyle = C.top; g.fillRect(x0, y, x1 - x0, TH);
     g.fillStyle = C.topInk; g.font = F(700, 24); g.textBaseline = 'middle';
     const cy = y + TH / 2;
     g.textAlign = 'center'; g.fillText('#', cols.n, cy);
     g.textAlign = 'left'; g.fillText('PARTICIPANTE', cols.nom, cy);
-    g.textAlign = 'center'; g.fillText('EXACTOS', cols.ex, cy); g.fillText('ACIERTOS', cols.ac, cy); g.fillText('PTS', cols.pts, cy);
+    g.textAlign = 'center';
+    pron.partidos.forEach((p, i) => g.fillText(varios ? `P${i + 1}` : 'PRONÓSTICO', xPick(i), cy));
+    g.fillText('PTS', cols.pts, cy);
     y += TH;
 
     filas.forEach((f, i) => {
       const pos = Number(f.posicion), pts = Number(f.puntos);
       g.fillStyle = pos <= 3 && pts > 0 ? C.soft : i % 2 ? C.alt : '#ffffff';
       g.fillRect(x0, y, x1 - x0, FILA);
+      g.fillStyle = 'rgba(253, 225, 180, .45)';
+      pron.partidos.forEach((p, k) => g.fillRect(xPick(k) - ANCHO_P / 2 + 6, y, ANCHO_P - 12, FILA));
       g.fillStyle = C.line; g.fillRect(x0, y + FILA - 1, x1 - x0, 1);
       const m = y + FILA / 2;
       g.textAlign = 'center';
       if (pos <= 3 && pts > 0) { g.font = F(400, 34); g.fillText(['🥇', '🥈', '🥉'][pos - 1], cols.n, m + 2); }
       else { g.fillStyle = C.muted; g.font = F(700, 28); g.fillText(String(pos), cols.n, m); }
       g.textAlign = 'left'; g.fillStyle = C.text; g.font = F(600, 30);
-      g.fillText(recorta(f.nombre, cols.ex - cols.nom - 90), cols.nom, m);
-      g.textAlign = 'center'; g.fillStyle = C.muted; g.font = F(500, 28);
-      g.fillText(String(f.exactos), cols.ex, m); g.fillText(String(f.aciertos), cols.ac, m);
+      g.fillText(recorta(f.nombre, finNombre - cols.nom), cols.nom, m);
+      g.textAlign = 'center';
+      pron.partidos.forEach((p, i) => {
+        const mp = pron.picks.get(Number(p.id));
+        const v = mp?.get(`${f.nombre}|${f.cedula_corta}`) ?? mp?.get(f.nombre);
+        g.fillStyle = v ? C.text : C.muted; g.font = F(v ? 700 : 500, 30);
+        g.fillText(v || '—', xPick(i), m);
+      });
       g.fillStyle = C.brand; g.font = F(800, 32); g.fillText(String(pts), cols.pts, m);
       y += FILA;
     });
@@ -461,6 +501,7 @@
         const k = x.cedula_corta ? `${x.nombre}|${x.cedula_corta}` : x.nombre;
         picks.get(Number(x.partido_id))?.set(k, `${x.goles_local}–${x.goles_visitante}`);
       }
+      ultimoJuego = { partidos: enJuego, picks };
       const varios = enJuego.length > 1;
       const etiqueta = (i) => (varios ? `P${i + 1}` : 'Pronóst.');
 
